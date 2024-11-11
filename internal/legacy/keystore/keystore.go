@@ -2256,7 +2256,7 @@ func (a *btcAddress) verifyKeypairs() error {
 	privKey, pubKey := btcec.PrivKeyFromBytes(a.privKeyCT)
 
 	data := "String to sign."
-	sig := ecdsa.Sign(privKey, []byte(data))
+	sig, _ := ecdsa.Sign(privKey, []byte(data), nil)
 
 	ok := sig.Verify([]byte(data), pubKey)
 	if !ok {

@@ -484,7 +484,7 @@ func (a *managedAddress) Validate(msg [32]byte, priv *btcec.PrivateKey) error {
 	// For the "legacy" addr types, we'll generate an ECDSA signature to
 	// verify against.
 	case NestedWitnessPubKey, PubKeyHash, WitnessPubKey:
-		sig = ecdsa.Sign(addrPrivKey, msg[:])
+		sig, _ = ecdsa.Sign(addrPrivKey, msg[:], nil)
 
 	// For the newer taproot addr type, we'll generate a schnorr signature
 	// to verify against.

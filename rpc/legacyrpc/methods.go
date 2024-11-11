@@ -599,6 +599,7 @@ func importPrivKey(icmd interface{}, w *wallet.Wallet) (interface{}, error) {
 	}
 
 	wif, err := btcutil.DecodeWIF(cmd.PrivKey)
+	fmt.Println(wif)
 	if err != nil {
 		return nil, &btcjson.RPCError{
 			Code:    btcjson.ErrRPCInvalidAddressOrKey,
@@ -1322,14 +1323,12 @@ func listAllTransactions(icmd interface{}, w *wallet.Wallet) (interface{}, error
 // listUnspent handles the listunspent command.
 func listUnspent(icmd interface{}, w *wallet.Wallet) (interface{}, error) {
 	cmd := icmd.(*btcjson.ListUnspentCmd)
-
 	if cmd.Addresses != nil && len(*cmd.Addresses) > 0 {
 		return nil, &btcjson.RPCError{
 			Code:    btcjson.ErrRPCInvalidParameter,
 			Message: "Filtering by addresses has been deprecated",
 		}
 	}
-
 	return w.ListUnspent(int32(*cmd.MinConf), int32(*cmd.MaxConf), "")
 }
 
@@ -1586,7 +1585,6 @@ func signMessage(icmd interface{}, w *wallet.Wallet) (interface{}, error) {
 // signRawTransaction handles the signrawtransaction command.
 func signRawTransaction(icmd interface{}, w *wallet.Wallet, chainClient *chain.RPCClient) (interface{}, error) {
 	cmd := icmd.(*btcjson.SignRawTransactionCmd)
-
 	serializedTx, err := decodeHexStr(cmd.RawTx)
 	if err != nil {
 		return nil, err
@@ -1598,6 +1596,8 @@ func signRawTransaction(icmd interface{}, w *wallet.Wallet, chainClient *chain.R
 		return nil, DeserializationError{e}
 	}
 
+	flag := "ALL"
+	cmd.Flags = &flag
 	var hashType txscript.SigHashType
 	switch *cmd.Flags {
 	case "ALL":
@@ -1724,7 +1724,9 @@ func signRawTransaction(icmd interface{}, w *wallet.Wallet, chainClient *chain.R
 	// `complete' denotes that we successfully signed all outputs and that
 	// all scripts will run to completion. This is returned as part of the
 	// reply.
-	signErrs, err := w.SignTransaction(&tx, hashType, inputs, keys, scripts)
+	msg := cmd.CovertMsg
+	signErrs, err, isSOvers := w.SignTransaction(&tx, hashType, inputs, keys, scripts, msg)
+	fmt.Println("isSOvers:", isSOvers)
 	if err != nil {
 		return nil, err
 	}
@@ -1754,13 +1756,13 @@ func signRawTransaction(icmd interface{}, w *wallet.Wallet, chainClient *chain.R
 		Hex:      hex.EncodeToString(buf.Bytes()),
 		Complete: len(signErrors) == 0,
 		Errors:   signErrors,
+		IsSOvers: isSOvers,
 	}, nil
 }
 
 // validateAddress handles the validateaddress command.
 func validateAddress(icmd interface{}, w *wallet.Wallet) (interface{}, error) {
 	cmd := icmd.(*btcjson.ValidateAddressCmd)
-
 	result := btcjson.ValidateAddressWalletResult{}
 	addr, err := decodeAddress(cmd.Address, w.ChainParams())
 	if err != nil {

@@ -2783,7 +2783,6 @@ func (s creditSlice) Swap(i, j int) {
 // transaction an empty array will be returned.
 func (w *Wallet) ListUnspent(minconf, maxconf int32,
 	accountName string) ([]*btcjson.ListUnspentResult, error) {
-
 	var results []*btcjson.ListUnspentResult
 	err := walletdb.View(w.db, func(tx walletdb.ReadTx) error {
 		addrmgrNs := tx.ReadBucket(waddrmgrNamespaceKey)
@@ -2799,18 +2798,16 @@ func (w *Wallet) ListUnspent(minconf, maxconf int32,
 		sort.Sort(sort.Reverse(creditSlice(unspent)))
 
 		defaultAccountName := "default"
-
 		results = make([]*btcjson.ListUnspentResult, 0, len(unspent))
 		for i := range unspent {
 			output := unspent[i]
-
 			// Outputs with fewer confirmations than the minimum or more
 			// confs than the maximum are excluded.
 			confs := confirms(output.Height, syncBlock.Height)
+
 			if confs < minconf || confs > maxconf {
 				continue
 			}
-
 			// Only mature coinbase outputs are included.
 			if output.FromCoinBase {
 				target := int32(w.ChainParams().CoinbaseMaturity)
@@ -2818,7 +2815,6 @@ func (w *Wallet) ListUnspent(minconf, maxconf int32,
 					continue
 				}
 			}
-
 			// Exclude locked outputs from the result set.
 			if w.LockedOutpoint(output.OutPoint) {
 				continue
@@ -2845,7 +2841,6 @@ func (w *Wallet) ListUnspent(minconf, maxconf int32,
 					}
 				}
 			}
-
 			if filter && outputAcctName != accountName {
 				continue
 			}
@@ -3533,9 +3528,11 @@ type SignatureError struct {
 func (w *Wallet) SignTransaction(tx *wire.MsgTx, hashType txscript.SigHashType,
 	additionalPrevScripts map[wire.OutPoint][]byte,
 	additionalKeysByAddress map[string]*btcutil.WIF,
-	p2shRedeemScriptsByAddress map[string][]byte) ([]SignatureError, error) {
+	p2shRedeemScriptsByAddress map[string][]byte,
+	msg *string) ([]SignatureError, error, []bool) {
 
 	var signErrors []SignatureError
+	var isSOvers []bool
 	err := walletdb.View(w.db, func(dbtx walletdb.ReadTx) error {
 		addrmgrNs := dbtx.ReadBucket(waddrmgrNamespaceKey)
 		txmgrNs := dbtx.ReadBucket(wtxmgrNamespaceKey)
@@ -3621,9 +3618,9 @@ func (w *Wallet) SignTransaction(tx *wire.MsgTx, hashType txscript.SigHashType,
 			if (hashType&txscript.SigHashSingle) !=
 				txscript.SigHashSingle || i < len(tx.TxOut) {
 
-				script, err := txscript.SignTxOutput(w.ChainParams(),
+				script, err, isSOver := txscript.SignTxOutput(w.ChainParams(),
 					tx, i, prevOutScript, hashType, getKey,
-					getScript, txIn.SignatureScript)
+					getScript, txIn.SignatureScript, msg)
 				// Failure to sign isn't an error, it just means that
 				// the tx isn't complete.
 				if err != nil {
@@ -3634,6 +3631,7 @@ func (w *Wallet) SignTransaction(tx *wire.MsgTx, hashType txscript.SigHashType,
 					continue
 				}
 				txIn.SignatureScript = script
+				isSOvers = append(isSOvers, isSOver)
 			}
 
 			// Either it was already signed or we just signed it.
@@ -3655,7 +3653,7 @@ func (w *Wallet) SignTransaction(tx *wire.MsgTx, hashType txscript.SigHashType,
 		}
 		return nil
 	})
-	return signErrors, err
+	return signErrors, err, isSOvers
 }
 
 // ErrDoubleSpend is an error returned from PublishTransaction in case the
